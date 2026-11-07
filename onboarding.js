@@ -16,7 +16,7 @@
       if(!email){toast('Bitte erst deine E-Mail-Adresse eingeben');return}
       e.currentTarget.disabled=true;
       try{
-        const {error}=await db.auth.resend({type:'signup',email});
+        const {error}=await db.auth.resend({type:'signup',email,options:{emailRedirectTo:new URL('./',window.location.href).href}});
         if(error)throw error;
         toast('Wenn die Adresse noch nicht bestätigt ist, wird eine Bestätigungsmail gesendet.');
       }catch(error){err(error)}
