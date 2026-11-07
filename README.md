@@ -4,7 +4,7 @@ Privates, online erreichbares Lebensarchiv für persönliche Ereignisse, Persone
 
 ## Architektur
 
-- **Frontend:** `index.html`, `enhancements.js`, `security.js`, über GitHub Pages.
+- **Frontend:** `index.html`, `enhancements.js`, `security.js`, `onboarding.js`, `backup.js`, über GitHub Pages.
 - **Datenbank & Benutzerkonto:** Supabase Auth + PostgreSQL.
 - **Privater Dateispeicher:** Supabase Storage, Bucket `lifearchive-private`.
 - **Zugang:** Anmeldung mit E-Mail und Passwort **und** ein weiterer, serverseitig geprüfter Archivcode.
@@ -24,8 +24,8 @@ Der Archivcode wird **ausschließlich serverseitig** als gesalzener bcrypt-Hash 
 
 ## Einrichten
 
-1. In Supabase Auth einen eigenen Benutzer registrieren und die **E-Mail bestätigen**.
-2. In GitHub: `Settings → Pages → Deploy from a branch → main → /(root)`.
+1. In Supabase Auth einen eigenen Benutzer registrieren und die **E-Mail bestätigen**. Auf der Login-Seite gibt es nun **Bestätigungs-E-Mail erneut senden**.
+2. In GitHub: `Settings → Pages → Deploy from a branch → main → /(root)`. In Supabase unter **Authentication → URL Configuration** die GitHub-Pages-Adresse `https://tschikunow.github.io/Life-Archive/` bei Redirect URLs erlauben und als Site URL setzen.
 3. Danach die GitHub-Pages-URL aufrufen. Nach der Anmeldung einen eigenen, sicheren Archivcode mit mindestens 12 Zeichen festlegen. **Keine Passwörter im Chat teilen.**
 4. Als erster Test einen harmlosen Beispiel-Eintrag erstellen, speichern und die Seite neu laden. Nach Eingabe des Codes muss der gespeicherte Eintrag wieder erscheinen.
 5. Teste bei gesperrtem Archiv, ob ein direkter Datenbank-API-Zugriff ohne Freigabe nichts auslesen kann.
@@ -37,13 +37,15 @@ Der Archivcode wird **ausschließlich serverseitig** als gesalzener bcrypt-Hash 
 
 - Supabase-Tabellen und RLS-Regeln geprüft; Daten ohne gültige Sitzung nicht freigegeben.
 - Öffentliche RPCs für anonyme Benutzer gesperrt.
-- Die JavaScript-Dateien wurden auf Syntax geprüft.
+- Alle JavaScript-Dateien wurden auf Syntax geprüft. Das selbst erzeugte ZIP-Format wurde mit einem Roundtrip aus Manifest und Mediendatei getestet.
+- Ein temporärer Testeintrag blieb für einen simulierten Benutzer ohne Serverfreigabe trotz passender Benutzerkennung unlesbar; die Teständerung wurde zurückgerollt.
 - Noch ausstehend: kompletter Browsertest mit einem bestätigten Benutzerkonto, richtige Medien-Uploads im Livebetrieb, Wiederherstellung von großen Archiven.
 
 ## Bekannte Einschränkungen
 
-- JSON-Export enthält derzeit **keine Original-Foto- und Video-Dateien**, sondern nur deren Metadaten. Medien unbedingt separat sichern.
-- JSON-Import ist derzeit nicht atomar; ein Fehler kann bereits eingefügte Datensätze zurücklassen.
+- Unter Einstellungen gibt es eine **verschlüsselte Komplettsicherung** (`.lifa`) mit allen Texten und Medien bis insgesamt 160 MB. Das Format verwendet AES-256-GCM mit PBKDF2 (310.000 Iterationen) und ZIP ohne Kompression. Das Sicherungspasswort wird nicht gespeichert: **Verlust = keine Wiederherstellung**.
+- Der ältere JSON-Export enthält weiterhin **keine Original-Foto- und Video-Dateien**, sondern nur deren Metadaten. Für vollständige Sicherungen die `.lifa`-Datei verwenden.
+- Der Import von JSON und `.lifa` ist derzeit nicht atomar; ein Fehler kann bereits eingefügte Datensätze zurücklassen. Eine Sicherung möglichst in ein leeres Archiv importieren und Duplikate vermeiden.
 - Bei der derzeitigen Übersicht werden nur bis zu 5.000 Einträge geladen. Für langfristige Archive wird eine paginierte Darstellung benötigt.
 - „Besonders sensibel“ ist aktuell eine Kennzeichnung, **keine eigene Ende-zu-Ende-Verschlüsselung**.
 - Die Supabase-Option „Prüfung auf kompromittierte Passwörter“ muss bei unterstütztem Bezahlplan separat in Supabase Auth aktiviert werden.
