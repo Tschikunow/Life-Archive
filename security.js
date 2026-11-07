@@ -2,14 +2,30 @@
 'use strict';
 let vaultRequestSequence = 0;
 let vaultReady = false;
+let expiryTimer = null;
+function clearLocalArchive() {
+  if (expiryTimer) clearTimeout(expiryTimer);
+  expiryTimer = null;
+  state.vault = false;
+  state.items = []; state.links = []; state.media = [];
+  state.prefs = null; state.detail = null;
+}
+function scheduleArchiveExpiry(expiresAt) {
+  if (expiryTimer) clearTimeout(expiryTimer);
+  if (!expiresAt) return;
+  const remaining = Date.parse(expiresAt) - Date.now();
+  expiryTimer = setTimeout(() => {
+    clearLocalArchive();
+    state.vaultMessage = 'Die Archiv-Freigabe ist abgelaufen. Bitte Code erneut eingeben.';
+    render();
+  }, Math.max(0, remaining + 250));
+}
+
 async function syncArchiveSession(session) {
   const request = ++vaultRequestSequence;
   state.user = session?.user || null;
-  state.vault = false;
-  state.prefs = null;
-  state.items = [];
-  state.links = [];
-  state.media = [];
+  clearLocalArchive();
+  state.vaultMessage = '';
   state.serverVaultConfigured = false;
   if (!state.user) { vaultReady = true; render(); return; }
   try {
@@ -18,8 +34,10 @@ async function syncArchiveSession(session) {
     if (request !== vaultRequestSequence) return;
     state.serverVaultConfigured = Boolean(result.data?.configured);
     state.vault = Boolean(result.data?.unlocked);
-    if (state.vault) { await loadPrefs(); await loadAll(); }
-    else render();
+    if (state.vault) {
+      scheduleArchiveExpiry(result.data?.expires_at);
+      await loadPrefs(); await loadAll();
+    } else render();
   } catch (error) {
     if (request !== vaultRequestSequence) return;
     state.vault = false;
@@ -29,6 +47,14 @@ async function syncArchiveSession(session) {
 }
 function vaultView() {
   const configured = Boolean(state.serverVaultConfigured);
+  if (state.vaultMessage && !configured) {
+    app.innerHTML = '<div class="auth"><div class="brand">LIFE<span>ARCHIVE</span></div><h1>Archiv-Prüfung fehlgeschlagen</h1><p>'+esc(state.vaultMessage)+'</p><button class="btn primary" id="retry-vault">Erneut prüfen</button> <button class="btn" id="signout">Abmelden</button></div>';
+    document.getElementById('retry-vault').onclick = async () => {
+      const {data} = await db.auth.getSession(); await syncArchiveSession(data.session);
+    };
+    document.getElementById('signout').onclick = logout;
+    return;
+  }
   app.innerHTML = '<div class="auth"><div class="brand">LIFE<span style="color:var(--accent)">ARCHIVE</span></div>'+
     '<div class="eyebrow" style="margin-top:28px">GESCHÜTZTES LEBENSARCHIV</div>'+
     '<h1>'+(configured?'Archiv entsperren':'Archivcode erstmalig einrichten')+'</h1>'+
@@ -50,9 +76,12 @@ function vaultView() {
         : await db.rpc('archive_set_code', {p_code:code});
       if (result.error) throw result.error;
       if (result.data !== true) throw Error('Code falsch oder Zugriff vorübergehend gesperrt.');
+      const status = await db.rpc('archive_vault_status');
+      if (status.error || !status.data?.unlocked) throw Error('Server-Freigabe konnte nicht bestätigt werden');
       state.vault = true;
       state.vaultMessage = '';
       state.serverVaultConfigured = true;
+      scheduleArchiveExpiry(status.data.expires_at);
       await loadPrefs();
       await loadAll();
       toast('Archiv sicher entsperrt');
@@ -66,13 +95,13 @@ async function lockArchive() {
   try {
     const result = await db.rpc('archive_lock');
     if (result.error) throw result.error;
-  } catch (error) { err(error); }
-  state.vault = false;
-  state.items = [];
-  state.links = [];
-  state.media = [];
-  state.prefs = null;
-  state.detail = null;
+  } catch (error) {
+    err(error);
+    toast('Die Serversperre konnte nicht bestätigt werden. Bitte erneut versuchen.');
+    return;
+  }
+  clearLocalArchive();
+  state.vaultMessage = '';
   render();
 }
 const renderSettingsBeforeVault = settings;
@@ -98,11 +127,24 @@ settings = function(c) {
       if (result.error) throw result.error;
       if (result.data !== true) throw Error('Bisheriger Code falsch oder vorübergehend gesperrt.');
       form.reset();
+      const status = await db.rpc('archive_vault_status');
+      if (!status.error && status.data?.unlocked) scheduleArchiveExpiry(status.data.expires_at);
       toast('Archivcode serverseitig geändert');
     } catch (error) { err(error); }
     finally { submit.disabled = false; }
   };
 };
+document.addEventListener('visibilitychange', async () => {
+  if (document.hidden || !state.user || !state.vault) return;
+  try {
+    const result = await db.rpc('archive_vault_status');
+    if (result.error || !result.data?.unlocked) {
+      clearLocalArchive();
+      state.vaultMessage = 'Die Freigabe muss erneuert werden.';
+      render();
+    } else scheduleArchiveExpiry(result.data.expires_at);
+  } catch (_) { clearLocalArchive(); render(); }
+});
 db.auth.onAuthStateChange((event, session) => {
   if (event === 'INITIAL_SESSION' || event === 'TOKEN_REFRESHED' || event === 'USER_UPDATED') return;
   // Supabase-Abfragen erst nach dem Auth-Callback ausführen.
