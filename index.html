@@ -53,4 +53,4 @@ function settings(c){c.innerHTML=title('Einstellungen','Profil, Sicherungen und 
 async function start(){try{let {data:{session}}=await db.auth.getSession();state.user=session?.user||null;if(state.user)await loadPrefs();render();}catch(e){err(e);authView();}}
 db.auth.onAuthStateChange((_ev,session)=>{if(session?.user?.id!==state.user?.id){state.user=session?.user||null;state.vault=false;state.items=[];state.links=[];state.media=[];if(state.user)loadPrefs().then(render).catch(err);else render();}});
 start();
-</script></body></html>
+</script><script src="./enhancements.js"></script></body></html>
