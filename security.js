@@ -154,6 +154,11 @@ db.auth.onAuthStateChange((event, session) => {
   try {
     const {data,error} = await db.auth.getSession();
     if (error) throw error;
+    // Beim Öffnen der App den bisherigen Sitzungscode immer zurücksetzen.
+    if (data.session?.user) {
+      const lock = await db.rpc('archive_lock');
+      if (lock.error) throw lock.error;
+    }
     await syncArchiveSession(data.session);
   } catch (error) {
     state.user = null; state.vault = false; render(); err(error);
